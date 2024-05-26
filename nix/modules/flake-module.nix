@@ -24,7 +24,11 @@ in
         ];
         options = {
           # TODO: Multiple projects
-          # TODO: Workspace crates
+          rust-project.crates = lib.mkOption {
+            type = lib.types.attrsOf lib.types.attrs;
+            default = { };
+            description = "Configuration for multiple crates in the Rust project";
+          };
           rust-project.crane.args.buildInputs = lib.mkOption {
             type = lib.types.listOf lib.types.package;
             default = [ ];
@@ -78,10 +82,10 @@ in
         config =
           let
             inherit (cargoToml.package) name version;
-            inherit (config.rust-project) toolchain crane src cargoToml;
+            inherit (config.rust-project) toolchain crane src cargoToml crates;
 
             # Crane builder
-            craneBuild = rec {
+            mkCraneBuild = rec {
               args = crane.args // {
                 inherit src;
                 pname = name;
@@ -118,6 +122,9 @@ in
                 toolchain
               ] ++ config.rust-project.crane.args.nativeBuildInputs;
             };
+
+            # Generate crane builds for all crates
+            crateConfigs = lib.mapAttrs' (name: crateConfig: mkCraneBuild name crateConfig) crates;
           in
           {
             # See nix/modules/nixpkgs.nix (the user must import it)
@@ -126,17 +133,29 @@ in
             ];
 
             # Rust package
-            packages.${name} = craneBuild.package;
-            packages."${name}-doc" = craneBuild.doc;
+            packages = lib.mapAttrs'
+              (name: crate: {
+                inherit (crate) package;
+              })
+              crateConfigs;
 
-            checks."${name}-clippy" = craneBuild.check;
+            docs = lib.mapAttrs'
+              (name: crate: {
+                inherit (crate) doc;
+              })
+              crateConfigs;
 
-            # Rust dev environment
-            devShells.${name} = pkgs.mkShell {
-              inputsFrom = [
-                rustDevShell
-              ];
-            };
+            checks = lib.mapAttrs'
+              (name: crate: {
+                inherit (crate) check;
+              })
+              crateConfigs;
+
+            devShells = lib.mapAttrs'
+              (name: crate: {
+                inherit (crate) rustDevShell;
+              })
+              crateConfigs;
           };
       });
   };
