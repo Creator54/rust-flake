@@ -143,7 +143,7 @@ in
               (name: crate: {
                 inherit (crate) doc;
               })
-              crateConfigs;
+              (lib.filterAttrs (name: crate: crate.doc != null) crateConfigs);
 
             checks = lib.mapAttrs'
               (name: crate: {
